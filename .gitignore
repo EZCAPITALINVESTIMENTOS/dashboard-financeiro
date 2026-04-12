@@ -1,0 +1,23 @@
+# Data folders (large CSVs - not tracked in git)
+Services/
+Services_Created/
+DebitCredit/
+Tickets/
+
+# Reference files from commercial CR
+*_ref.js
+*_ref.py
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+*.bak.*
+
+# Claude
+.claude/
+
+# Backups
+*.bak
