@@ -37,6 +37,10 @@ DEBITCREDIT_DIR = os.path.join(BASE_DIR, "DebitCredit")
 TODAY = date.today().isoformat()
 CURRENT_YEAR = str(date.today().year)
 
+# Filtro: somente dados de 2025 e 2026
+MIN_YEAR = 2025
+MAX_YEAR = 2026
+
 # Top-N limits
 TOP_AGENCIES = 100
 TOP_PROVIDERS = 50
@@ -553,10 +557,14 @@ def generate_insights(data):
     # ---------------------------------------------------------------
     canc_months = sorted(canc.keys())
     if canc_months and months:
-        last3_canc_n = sum(canc.get(m, {}).get("n", 0) for m in canc_months[-3:])
-        last3_canc_lost = sum(canc.get(m, {}).get("lost_rev", 0) for m in canc_months[-3:])
-        last3_total_n = sum(pnl.get(m, {}).get("n_total", 0) for m in months[-3:])
+        # Use the same 3 months for both numerator and denominator
+        last3 = months[-3:]
+        last3_canc_n = sum(canc.get(m, {}).get("n", 0) for m in last3)
+        last3_canc_lost = sum(canc.get(m, {}).get("lost_rev", 0) for m in last3)
+        last3_total_n = sum(pnl.get(m, {}).get("n_total", 0) for m in last3)
         canc_rate = safe_div(last3_canc_n, last3_total_n) * 100
+        # Sanity cap at 100%
+        canc_rate = min(canc_rate, 100.0)
 
         # 24. Cancellation rate threshold
         if canc_rate > 15:
@@ -1163,6 +1171,14 @@ def build():
         created_at = parse_date(row.get("created_at", ""))
         payment_deadline_dt = parse_date(row.get("payment_deadline", ""))
 
+        # Filtro de ano: somente MIN_YEAR..MAX_YEAR (ex: 2025-2026)
+        sd_year = service_date.year if service_date else None
+        ca_year = created_at.year if created_at else None
+        if sd_year and (sd_year < MIN_YEAR or sd_year > MAX_YEAR):
+            continue
+        if not sd_year and ca_year and (ca_year < MIN_YEAR or ca_year > MAX_YEAR):
+            continue
+
         # BRL conversion
         if exchange_rate > 1:
             sale_brl = price_sale * exchange_rate
@@ -1591,6 +1607,10 @@ def build():
         if not fd_mo:
             continue
 
+        # Filtro de ano: somente MIN_YEAR..MAX_YEAR
+        if finan_date and (finan_date.year < MIN_YEAR or finan_date.year > MAX_YEAR):
+            continue
+
         dc_count += 1
 
         # Cash Flow from DC
@@ -1665,6 +1685,11 @@ def build():
     for tid, row in tickets.items():
         created = parse_date(row.get("created_at", ""))
         closed = parse_date(row.get("closed_at", ""))
+
+        # Filtro de ano: somente tickets criados entre MIN_YEAR..MAX_YEAR
+        if created and (created.year < MIN_YEAR or created.year > MAX_YEAR):
+            continue
+
         tmo = month_key(created)
         if tmo:
             tkt_monthly_count[tmo] += 1
@@ -1754,7 +1779,8 @@ def build():
     # Finalize cancellation monthly rate
     for mo in canc_monthly:
         total_n = pnl_monthly[mo]["n_total"] if mo in pnl_monthly else 0
-        canc_monthly[mo]["rate_pct"] = r2(safe_div(canc_monthly[mo]["n"], total_n) * 100)
+        rate = safe_div(canc_monthly[mo]["n"], total_n) * 100
+        canc_monthly[mo]["rate_pct"] = r2(min(rate, 100.0))
 
     # Finalize cancellation by agency rate
     for ag in canc_agency:
