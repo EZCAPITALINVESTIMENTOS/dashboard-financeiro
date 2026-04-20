@@ -1171,13 +1171,24 @@ def build():
         created_at = parse_date(row.get("created_at", ""))
         payment_deadline_dt = parse_date(row.get("payment_deadline", ""))
 
-        # Filtro de ano: somente MIN_YEAR..MAX_YEAR (ex: 2025-2026)
+        # Filtro de ano:
+        #   - Nunca aceita service_date anterior a MIN_YEAR (ex: 2024 pra tras).
+        #   - Aceita service_date posterior a MAX_YEAR (ex: 2027+) se o booking foi
+        #     criado em MIN_YEAR..MAX_YEAR (ex: future booking criado em 2026).
+        #   - Se nao tem service_date, usa created_at.
         sd_year = service_date.year if service_date else None
         ca_year = created_at.year if created_at else None
-        if sd_year and (sd_year < MIN_YEAR or sd_year > MAX_YEAR):
-            continue
-        if not sd_year and ca_year and (ca_year < MIN_YEAR or ca_year > MAX_YEAR):
-            continue
+        if sd_year is not None:
+            if sd_year < MIN_YEAR:
+                continue
+            if sd_year > MAX_YEAR:
+                # Future service: so mantem se criado no periodo
+                if ca_year is None or not (MIN_YEAR <= ca_year <= MAX_YEAR):
+                    continue
+        else:
+            # Sem service_date: usa created_at
+            if ca_year is None or not (MIN_YEAR <= ca_year <= MAX_YEAR):
+                continue
 
         # BRL conversion
         if exchange_rate > 1:
